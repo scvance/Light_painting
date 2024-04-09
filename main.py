@@ -1,11 +1,11 @@
-# import RPi.GPIO as GPIO
+import RPi.GPIO as GPIO
 import pandas as pd
 import time
 
-df = pd.read_csv("./fingerpaint_data.csv", sep=',', encoding='latin-1')
+# df = pd.read_csv("./fingerpaint_data.csv", sep=',', encoding='latin-1')
+df = pd.read_csv("./baseball09.csv", sep=',', encoding='latin-1')
 
-for row in df.iterrows():
-    print(row[1]['X'], row[1]['Y'], row[1]['R'], row[1]['G'], row[1]['B'])
+
 
 # Define the GPIO pins
 V_SPIN = 17
@@ -36,7 +36,8 @@ pwmGreen.start(0)
 pwmBlue.start(0)
 
 # Define Global Variables
-CURR_XY = [0, 0]
+# start in the bottom left corner
+CURR_XY = [0, 11.5]
 
 
 # Define Functions
@@ -54,10 +55,10 @@ def move_carriage(x, y):
         dirH = GPIO.LOW
     else:
         dirH = GPIO.HIGH
-    if new_y < 0:
-        dirV = GPIO.LOW
-    else:
+    if new_y > 0:
         dirV = GPIO.HIGH
+    else:
+        dirV = GPIO.LOW
     # actually define num_steps_x and num_steps_y
     # according to some quick maths, the wheel diameter is 1 inch which means
     # the circumferance of the wheel is exactly pi inches.
@@ -66,8 +67,13 @@ def move_carriage(x, y):
     # 1/3.14 in order to get the percentage of a revolution 1 inch is. We determine that
     # it is 31.847% of a revolution. then we take 200 * .31847 to get 63.69 steps per inch
     # WARNING: IT IS POSSIBLE 200 STEPS DOES NOT == 1 REVOLUTION
+    # due to gear ratio, there are 94 inches between the top and bottom of the machine.
+    # this means that we are going to multiply our position by 7.84 so that we can get an
+    # accurate position
     num_steps_x = abs(int(new_x * 63.69))
-    num_steps_y = abs(int(new_y * 63.69))
+    num_steps_y = abs(int(new_y * 63.69 * 3.4))
+    if (num_steps_y < 2 and num_steps_x < 2):
+        return 1
     taken_steps_x = 0
     taken_steps_y = 0
     # set them directions
@@ -78,50 +84,41 @@ def move_carriage(x, y):
         if num_steps_x > taken_steps_x and num_steps_y > taken_steps_y:
             # step the motor
             GPIO.output([H_SPIN, V_SPIN], (GPIO.HIGH, GPIO.HIGH))
-            time.sleep(0.001)
+            time.sleep(0.0008)
             GPIO.output([H_SPIN, V_SPIN], (GPIO.LOW, GPIO.LOW))
-            time.sleep(0.001)
+            time.sleep(0.0008)
             taken_steps_x += 1
             taken_steps_y += 1
         elif num_steps_y > taken_steps_y:
             GPIO.output(V_SPIN, GPIO.HIGH)
-            time.sleep(0.001)
+            time.sleep(0.0008)
             GPIO.output(V_SPIN, GPIO.LOW)
-            time.sleep(0.001)
+            time.sleep(0.0008)
             taken_steps_y += 1
         else:
             GPIO.output(H_SPIN, GPIO.HIGH)
-            time.sleep(0.001)
+            time.sleep(0.0008)
             GPIO.output(H_SPIN, GPIO.LOW)
-            time.sleep(0.001)
+            time.sleep(0.0008)
             taken_steps_x += 1
     GPIO.output(V_RELAY, GPIO.LOW)
     CURR_XY = [x, y]
 
+for row in df.iterrows():
+    try:
+        move_carriage(row[1]['X'], row[1]['Y'])
+        set_led_colors(row[1]['R'] / 255, row[1]['G'] / 255, row[1]['B'] / 255)
+    except KeyboardInterrupt:
+        # if the picture takes too long to draw, we will pause by keyboard interrupting
+        # we need to set the colors to black so that we don't overexpose one point.
+        set_led_colors(0,0,0)
+        time.sleep(10)
+    # time.sleep(50/1000) # if we don't have this delay then the next iteration of the loop
+    # will immediately execute andthe majority of the time, you will never even see the light
+    # because of this, we are delaying for one half of a second in order to see the light.
 
-
-# move_carriage(0, 1)
-# # Demo: Cycle through colors while stepping motors
-# for i in range(100):
-#     set_led_colors(i/100, 0, 0)  # Increase red
-#     move_carriage(0, i + 1)
-#     # time.sleep(0.01)
-#
-# CURR_XY = [0, 0]
-#
-# for i in range(100):
-#     set_led_colors((100-i)/100, i/100, 0)  # Decrease red, increase green
-#     move_carriage(0, i + 1)
-#     # time.sleep(0.01)
-#
-# CURR_XY = [0, 0]
-#
-# for i in range(100):
-#     set_led_colors(0, (100-i)/100, i/100)  # Decrease green, increase blue
-#     move_carriage(0, i + 1)
-#     # time.sleep(0.01)
-
-
+set_led_colors(0,0,0)
+move_carriage(1, 11.8)
 # Cleanup
 pwmRed.stop()
 pwmGreen.stop()
@@ -133,7 +130,6 @@ GPIO.output(V_SPIN, GPIO.LOW)
 GPIO.cleanup()
 
 print("cleaned up")
-
 
 
 
